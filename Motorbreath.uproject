@@ -12,7 +12,7 @@
 			]
 		},
 		{
-			"Name": "ChaosVehiclesPlugin",
+			"Name": "OnlineSubsystemSteam",
 			"Enabled": true
 		}
 	]
