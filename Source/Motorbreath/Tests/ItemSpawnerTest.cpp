@@ -3,7 +3,9 @@
 #include "../Item.h"
 #include "../ItemSpawner.h"
 
+#include "Components/StaticMeshComponent.h"
 #include "Engine/Engine.h"
+#include "Engine/StaticMesh.h"
 #include "Engine/World.h"
 #include "Misc/AutomationTest.h"
 
@@ -23,8 +25,11 @@ bool FItemSpawnerTest::RunTest(const FString& Parameters)
     World->InitializeActorsForPlay(FURL());
     World->BeginPlay();
 
-    AItem* SourceItem = World->SpawnActor<AItem>();
-    if (!TestNotNull(TEXT("Source weapon item"), SourceItem))
+    UStaticMesh* ItemMesh = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cube.Cube"));
+    AItem* SourceItem = World->SpawnActorDeferred<AItem>(
+        AItem::StaticClass(), FTransform(FVector(1000.0, 0.0, 0.0)));
+    if (!TestNotNull(TEXT("Source weapon item"), SourceItem) ||
+        !TestNotNull(TEXT("Test item mesh"), ItemMesh))
     {
         GEngine->DestroyWorldContext(World);
         World->DestroyWorld(false);
@@ -35,6 +40,9 @@ bool FItemSpawnerTest::RunTest(const FString& Parameters)
     SourceItem->Item.Name = TEXT("Spawner weapon");
     SourceItem->Item.Quantity = 2;
     SourceItem->Item.Weapon = AItem::StaticClass();
+    SourceItem->Item.Mesh = ItemMesh;
+    SourceItem->FinishSpawning(FTransform(FVector(1000.0, 0.0, 0.0)));
+    TestTrue(TEXT("Source item displays its configured mesh"), SourceItem->StaticMesh->GetStaticMesh() == ItemMesh);
 
     AItemSpawner* Spawner = World->SpawnActorDeferred<AItemSpawner>(
         AItemSpawner::StaticClass(), FTransform::Identity);
@@ -58,6 +66,7 @@ bool FItemSpawnerTest::RunTest(const FString& Parameters)
     }
     TestEqual(TEXT("Spawner copies the source item ID"), FirstSpawnedItem->Item.Id, 11);
     TestEqual(TEXT("Spawner copies the source item quantity"), FirstSpawnedItem->Item.Quantity, 2);
+    TestTrue(TEXT("Spawned item displays the copied mesh"), FirstSpawnedItem->StaticMesh->GetStaticMesh() == ItemMesh);
 
     FirstSpawnedItem->Destroy();
     Spawner->Tick(0.1f);
@@ -71,6 +80,7 @@ bool FItemSpawnerTest::RunTest(const FString& Parameters)
     {
         TestTrue(TEXT("Respawned item retains weapon data"),
             RespawnedItem->Item.Id == 11 && RespawnedItem->Item.Quantity == 2);
+        TestTrue(TEXT("Respawned item displays the copied mesh"), RespawnedItem->StaticMesh->GetStaticMesh() == ItemMesh);
     }
 
     GEngine->DestroyWorldContext(World);

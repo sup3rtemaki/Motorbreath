@@ -6,6 +6,7 @@
 #include "Missile.generated.h"
 
 class UCapsuleComponent;
+class UProjectileMovementComponent;
 class UStaticMeshComponent;
 class UNiagaraSystem;
 class UPrimitiveComponent;
@@ -20,6 +21,9 @@ class MOTORBREATH_API AMissile : public ADamageActorBase
 
 public:
     AMissile();
+
+    UPROPERTY(BlueprintReadWrite, VisibleAnywhere, Category = "Missile")
+    TObjectPtr<UProjectileMovementComponent> ProjectileMovement = nullptr;
 
 protected:
     virtual void Tick(float DeltaSeconds) override;

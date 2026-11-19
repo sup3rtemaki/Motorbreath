@@ -5,6 +5,8 @@
 #include "Components/StaticMeshComponent.h"
 #include "PhysicsVehicle.h"
 
+DEFINE_LOG_CATEGORY_STATIC(LogItemPickup, Log, All);
+
 AItem::AItem()
 {
     PrimaryActorTick.bCanEverTick = true;
@@ -17,6 +19,16 @@ AItem::AItem()
 
     StaticMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("StaticMesh"));
     StaticMesh->SetupAttachment(Capsule);
+}
+
+void AItem::OnConstruction(const FTransform& Transform)
+{
+    Super::OnConstruction(Transform);
+
+    if (Item.Mesh && StaticMesh)
+    {
+        StaticMesh->SetStaticMesh(Item.Mesh);
+    }
 }
 
 void AItem::Tick(float DeltaSeconds)
@@ -33,6 +45,8 @@ void AItem::OnCapsuleBeginOverlap(UPrimitiveComponent* OverlappedComponent, AAct
     UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep,
     const FHitResult& SweepResult)
 {
+    UE_LOG(LogItemPickup, Verbose, TEXT("%s overlaps actor %s, component %s."),
+        *GetName(), *GetNameSafe(OtherActor), *GetNameSafe(OtherComp));
     APhysicsVehicle* Vehicle = Cast<APhysicsVehicle>(OtherActor);
     if (!IsValid(Vehicle))
     {

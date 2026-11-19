@@ -20,6 +20,13 @@
 #include "UObject/StructOnScope.h"
 #include "UObject/UnrealType.h"
 
+#if WITH_DEV_AUTOMATION_TESTS
+#include "GuidedMissile.h"
+#include "Engine/StaticMesh.h"
+#include "Engine/Texture2D.h"
+#include "Misc/AutomationTest.h"
+#endif
+
 DEFINE_LOG_CATEGORY_STATIC(LogMotorbreathPlayerController, Log, All);
 
 namespace
@@ -144,6 +151,78 @@ namespace
         return true;
     }
 
+    bool CopyWeaponToBlueprintStruct(const FWeaponStruct& Weapon, UScriptStruct* DestinationType,
+        void* DestinationStruct)
+    {
+        const UScriptStruct* SourceStruct = FWeaponStruct::StaticStruct();
+        int32 CopiedFieldCount = 0;
+        for (TFieldIterator<FProperty> DestinationIt(DestinationType); DestinationIt; ++DestinationIt)
+        {
+            FProperty* DestinationProperty = *DestinationIt;
+            const FString AuthoredName = DestinationProperty->GetAuthoredName();
+            FProperty* SourceProperty = FindFProperty<FProperty>(SourceStruct, *AuthoredName);
+            if (!SourceProperty || DestinationProperty->ArrayDim != 1 || SourceProperty->ArrayDim != 1)
+            {
+                UE_LOG(LogMotorbreathPlayerController, Error,
+                    TEXT("Cannot find compatible source for weapon field %s in Blueprint struct %s."),
+                    *AuthoredName, *DestinationType->GetName());
+                return false;
+            }
+
+            void* DestinationValue = DestinationProperty->ContainerPtrToValuePtr<void>(DestinationStruct);
+            const void* SourceValue = SourceProperty->ContainerPtrToValuePtr<void>(&Weapon);
+            const FClassProperty* DestinationClass = CastField<FClassProperty>(DestinationProperty);
+            const FClassProperty* SourceClass = CastField<FClassProperty>(SourceProperty);
+            if (DestinationClass || SourceClass)
+            {
+                UClass* Value = SourceClass ? Cast<UClass>(SourceClass->GetObjectPropertyValue(SourceValue)) : nullptr;
+                if (!DestinationClass || !SourceClass || (Value && !Value->IsChildOf(DestinationClass->MetaClass)))
+                {
+                    UE_LOG(LogMotorbreathPlayerController, Error,
+                        TEXT("Weapon field %s in Blueprint struct %s cannot hold class %s; it requires a subclass of %s."),
+                        *AuthoredName, *DestinationType->GetName(), *GetNameSafe(Value),
+                        DestinationClass ? *GetNameSafe(DestinationClass->MetaClass) : TEXT("<not a class property>"));
+                    return false;
+                }
+                DestinationClass->SetObjectPropertyValue(DestinationValue, Value);
+            }
+            else if (const FObjectPropertyBase* DestinationObject = CastField<FObjectPropertyBase>(DestinationProperty))
+            {
+                const FObjectPropertyBase* SourceObject = CastField<FObjectPropertyBase>(SourceProperty);
+                UObject* Value = SourceObject ? SourceObject->GetObjectPropertyValue(SourceValue) : nullptr;
+                if (!SourceObject || (Value && !Value->IsA(DestinationObject->PropertyClass)))
+                {
+                    UE_LOG(LogMotorbreathPlayerController, Error,
+                        TEXT("Weapon field %s in Blueprint struct %s cannot hold object %s."),
+                        *AuthoredName, *DestinationType->GetName(), *GetNameSafe(Value));
+                    return false;
+                }
+                DestinationObject->SetObjectPropertyValue(DestinationValue, Value);
+            }
+            else if (DestinationProperty->SameType(SourceProperty))
+            {
+                DestinationProperty->CopyCompleteValue(DestinationValue, SourceValue);
+            }
+            else
+            {
+                UE_LOG(LogMotorbreathPlayerController, Error,
+                    TEXT("Incompatible types for weapon field %s in Blueprint struct %s."),
+                    *AuthoredName, *DestinationType->GetName());
+                return false;
+            }
+            ++CopiedFieldCount;
+        }
+
+        if (CopiedFieldCount == 0)
+        {
+            UE_LOG(LogMotorbreathPlayerController, Error,
+                TEXT("No compatible fields were found while transferring weapon data to %s."),
+                *DestinationType->GetName());
+            return false;
+        }
+        return true;
+    }
+
     bool InvokeBlueprintFunctionWithWeapon(UObject* Target, const TCHAR* FunctionName,
         const FWeaponStruct& Weapon)
     {
@@ -167,32 +246,8 @@ namespace
 
         FStructOnScope Parameters(Function);
         void* DestinationStruct = WeaponParameter->ContainerPtrToValuePtr<void>(Parameters.GetStructMemory());
-        const UScriptStruct* SourceStruct = FWeaponStruct::StaticStruct();
-        int32 CopiedFieldCount = 0;
-        for (TFieldIterator<FProperty> DestinationIt(WeaponParameter->Struct);
-            DestinationIt; ++DestinationIt)
+        if (!CopyWeaponToBlueprintStruct(Weapon, WeaponParameter->Struct, DestinationStruct))
         {
-            FProperty* DestinationProperty = *DestinationIt;
-            FProperty* SourceProperty = FindFProperty<FProperty>(SourceStruct, DestinationProperty->GetFName());
-            if (!SourceProperty || !DestinationProperty->SameType(SourceProperty))
-            {
-                UE_LOG(LogMotorbreathPlayerController, Error,
-                    TEXT("Cannot transfer weapon field %s to Blueprint struct %s."),
-                    *DestinationProperty->GetName(), *WeaponParameter->Struct->GetName());
-                continue;
-            }
-
-            void* DestinationValue = DestinationProperty->ContainerPtrToValuePtr<void>(DestinationStruct);
-            const void* SourceValue = SourceProperty->ContainerPtrToValuePtr<void>(&Weapon);
-            DestinationProperty->CopyCompleteValue(DestinationValue, SourceValue);
-            ++CopiedFieldCount;
-        }
-
-        if (CopiedFieldCount == 0)
-        {
-            UE_LOG(LogMotorbreathPlayerController, Error,
-                TEXT("No compatible fields were found while transferring weapon data to %s."),
-                *WeaponParameter->Struct->GetName());
             return false;
         }
 
@@ -258,22 +313,6 @@ namespace
         FClassProperty* Property = CastField<FClassProperty>(
             FindReflectedProperty(Target ? Target->GetClass() : nullptr, PropertyName));
         return Property ? Cast<UClass>(Property->GetObjectPropertyValue_InContainer(Target)) : nullptr;
-    }
-
-    bool SetBoolPropertyValue(UObject* Target, const TCHAR* PropertyName, bool Value)
-    {
-        FBoolProperty* Property = CastField<FBoolProperty>(
-            FindReflectedProperty(Target ? Target->GetClass() : nullptr, PropertyName));
-        if (!Property)
-        {
-            UE_LOG(LogMotorbreathPlayerController, Warning,
-                TEXT("Boolean property %s was not found on %s."),
-                PropertyName, Target ? *Target->GetClass()->GetName() : TEXT("null"));
-            return false;
-        }
-
-        Property->SetPropertyValue_InContainer(Target, Value);
-        return true;
     }
 
     bool InvokeBlueprintFunctionWithObject(UObject* Target, const TCHAR* FunctionName, UObject* Object)
@@ -373,6 +412,7 @@ void AMotorbreathPlayerController::BeginPlay()
 {
     Super::BeginPlay();
     UE_LOG(LogMotorbreathPlayerController, Log, TEXT("Hello"));
+    InitializeLocalVehicle(GetPawn());
 }
 
 void AMotorbreathPlayerController::Tick(float DeltaSeconds)
@@ -464,6 +504,23 @@ void AMotorbreathPlayerController::OnPossess(APawn* InPawn)
 
     UE_LOG(LogMotorbreathPlayerController, Log, TEXT("%s"),
         IsLocalController() ? TEXT("IS LOCAL CONTROLLER") : TEXT("NOT LOCAL CONTROLLER"));
+    InitializeLocalVehicle(InPawn);
+}
+
+void AMotorbreathPlayerController::AcknowledgePossession(APawn* InPawn)
+{
+    Super::AcknowledgePossession(InPawn);
+    if (GetWorld())
+    {
+        GetWorld()->GetTimerManager().SetTimerForNextTick(FTimerDelegate::CreateWeakLambda(this, [this]()
+        {
+            InitializeLocalVehicle(GetPawn());
+        }));
+    }
+    else
+    {
+        UE_LOG(LogMotorbreathPlayerController, Error, TEXT("Cannot initialize possession without a world."));
+    }
 }
 
 void AMotorbreathPlayerController::HandleDrive(const FInputActionValue& Value)
@@ -587,6 +644,18 @@ void AMotorbreathPlayerController::HandleCurrentWeaponUpdated()
     }
 }
 
+void AMotorbreathPlayerController::InitializeLocalVehicle(APawn* InPawn)
+{
+    if (!IsLocalController() || !HasActorBegunPlay() || !IsValid(InPawn) || InPawn->GetController() != this ||
+        !InPawn->IsA<APhysicsVehicle>() || (PossessedPawn == InPawn && PhysicsVehicle == InPawn))
+    {
+        return;
+    }
+
+    PossessedPawn = InPawn;
+    TryConfirmPossession();
+}
+
 void AMotorbreathPlayerController::TryConfirmPossession()
 {
     if (!IsValid(PossessedPawn))
@@ -603,12 +672,22 @@ void AMotorbreathPlayerController::TryConfirmPossession()
     }
 
     GetWorld()->GetTimerManager().ClearTimer(ConfirmPossessionRetryHandle);
+    UE_LOG(LogMotorbreathPlayerController, Log,
+        TEXT("Initializing local vehicle input for %s."), *GetNameSafe(PossessedPawn));
     SetInputMode(FInputModeGameOnly());
     SetViewTargetWithBlend(PossessedPawn, 0.0f);
     PossessedPawn->EnableInput(this);
 
     EnsureHUD();
     AddCarMappingContext(true);
+
+    if (IsValid(PhysicsVehicleInventory))
+    {
+        PhysicsVehicleInventory->WeaponChanged.RemoveDynamic(this,
+            &AMotorbreathPlayerController::HandleWeaponChanged);
+        PhysicsVehicleInventory->UpdateCurrentWeapon.RemoveDynamic(this,
+            &AMotorbreathPlayerController::HandleCurrentWeaponUpdated);
+    }
 
     PhysicsVehicle = Cast<APhysicsVehicle>(PossessedPawn);
     if (!PhysicsVehicle)
@@ -619,7 +698,6 @@ void AMotorbreathPlayerController::TryConfirmPossession()
         return;
     }
 
-    SetBoolPropertyValue(PhysicsVehicle, TEXT("bControlledLocally"), true);
     PhysicsVehicleInventory = PhysicsVehicle->GetVehicleInventory();
     BindInventoryDelegates();
     UpdateRadarReferences();
@@ -696,7 +774,7 @@ void AMotorbreathPlayerController::UpdateRadarReferences()
     }
 
     UChildActorComponent* RadarComponent = Cast<UChildActorComponent>(
-        GetObjectPropertyValue(PhysicsVehicle, TEXT("BP_RadarManager")));
+        GetObjectPropertyValue(PhysicsVehicle, TEXT("RadarManagerComponent")));
     AActor* RadarActor = RadarComponent ? RadarComponent->GetChildActor() : nullptr;
     if (!RadarActor)
     {
@@ -719,7 +797,7 @@ void AMotorbreathPlayerController::UpdateRadarReferences()
 
 APhysicsVehicle* AMotorbreathPlayerController::GetControlledVehicle() const
 {
-    if (IsValid(PhysicsVehicle))
+    if (IsValid(PhysicsVehicle) && PhysicsVehicle == GetPawn())
     {
         return PhysicsVehicle;
     }
@@ -778,6 +856,10 @@ void AMotorbreathPlayerController::Server_SetSelectedVehicleClass_Implementation
 
 void AMotorbreathPlayerController::Client_ConfirmPossession_Implementation(APawn* InPawn)
 {
+    if (InPawn && PossessedPawn == InPawn && PhysicsVehicle == InPawn)
+    {
+        return;
+    }
     PossessedPawn = InPawn;
     TryConfirmPossession();
 }
@@ -788,3 +870,75 @@ void AMotorbreathPlayerController::Client_CreateHUDAndMappingContext_Implementat
     EnsureHUD();
     AddCarMappingContext(false);
 }
+
+#if WITH_DEV_AUTOMATION_TESTS
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWeaponHUDConversionTest, "Motorbreath.Inventory.WeaponHUDConversion",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FWeaponHUDConversionTest::RunTest(const FString& Parameters)
+{
+    UScriptStruct* BlueprintStruct = LoadObject<UScriptStruct>(
+        nullptr, TEXT("/Game/Blueprints/Inventory/S_WeaponStruct.S_WeaponStruct"));
+    if (!TestNotNull(TEXT("Blueprint weapon struct"), BlueprintStruct))
+    {
+        return false;
+    }
+
+    auto FindField = [BlueprintStruct](const TCHAR* Name) -> FProperty*
+    {
+        for (TFieldIterator<FProperty> It(BlueprintStruct); It; ++It)
+        {
+            if (It->GetAuthoredName() == Name)
+            {
+                return *It;
+            }
+        }
+        return nullptr;
+    };
+
+    FIntProperty* Id = CastField<FIntProperty>(FindField(TEXT("Id")));
+    FStrProperty* Name = CastField<FStrProperty>(FindField(TEXT("Name")));
+    FIntProperty* Quantity = CastField<FIntProperty>(FindField(TEXT("Quantity")));
+    FClassProperty* WeaponClass = CastField<FClassProperty>(FindField(TEXT("Weapon")));
+    FObjectPropertyBase* Thumbnail = CastField<FObjectPropertyBase>(FindField(TEXT("Thumbnail")));
+    FObjectPropertyBase* Mesh = CastField<FObjectPropertyBase>(FindField(TEXT("Mesh")));
+    if (!TestNotNull(TEXT("Id field"), Id) || !TestNotNull(TEXT("Name field"), Name) ||
+        !TestNotNull(TEXT("Quantity field"), Quantity) || !TestNotNull(TEXT("Weapon field"), WeaponClass) ||
+        !TestNotNull(TEXT("Thumbnail field"), Thumbnail) || !TestNotNull(TEXT("Mesh field"), Mesh) ||
+        !TestTrue(TEXT("Weapon field accepts an actor class"), WeaponClass->MetaClass->IsChildOf(AActor::StaticClass())))
+    {
+        return false;
+    }
+
+    FWeaponStruct Weapon;
+    Weapon.Id = 7;
+    Weapon.Name = TEXT("Homing");
+    Weapon.Quantity = 10;
+    Weapon.Weapon = WeaponClass->MetaClass;
+    Weapon.Thumbnail = NewObject<UTexture2D>();
+    Weapon.Mesh = NewObject<UStaticMesh>();
+    FStructOnScope Destination(BlueprintStruct);
+    void* Data = Destination.GetStructMemory();
+    if (!TestTrue(TEXT("Weapon data converts to the Blueprint struct"),
+        CopyWeaponToBlueprintStruct(Weapon, BlueprintStruct, Data)))
+    {
+        return false;
+    }
+
+    TestEqual(TEXT("Weapon ID"), Id->GetPropertyValue_InContainer(Data), Weapon.Id);
+    TestEqual(TEXT("Weapon name"), Name->GetPropertyValue_InContainer(Data), Weapon.Name);
+    TestEqual(TEXT("Weapon quantity"), Quantity->GetPropertyValue_InContainer(Data), Weapon.Quantity);
+    TestTrue(TEXT("Weapon class"), WeaponClass->GetObjectPropertyValue_InContainer(Data) == Weapon.Weapon.Get());
+    TestTrue(TEXT("Weapon thumbnail"), Thumbnail->GetObjectPropertyValue_InContainer(Data) == Weapon.Thumbnail.Get());
+    TestTrue(TEXT("Weapon mesh"), Mesh->GetObjectPropertyValue_InContainer(Data) == Weapon.Mesh.Get());
+
+    if (!AGuidedMissile::StaticClass()->IsChildOf(WeaponClass->MetaClass))
+    {
+        Weapon.Weapon = AGuidedMissile::StaticClass();
+        AddExpectedError(TEXT("cannot hold class"), EAutomationExpectedErrorFlags::Contains, 1);
+        TestFalse(TEXT("Incompatible weapon classes are rejected"),
+            CopyWeaponToBlueprintStruct(Weapon, BlueprintStruct, Data));
+    }
+    return true;
+}
+#endif

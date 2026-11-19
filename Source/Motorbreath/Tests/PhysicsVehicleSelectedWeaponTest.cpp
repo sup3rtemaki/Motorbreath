@@ -106,7 +106,7 @@ bool FPhysicsVehicleSelectedWeaponTest::RunTest(const FString& Parameters)
     FWeaponStruct MissileItem;
     MissileItem.Id = 2;
     MissileItem.Name = TEXT("Missile");
-    MissileItem.Quantity = 1;
+    MissileItem.Quantity = 2;
     MissileItem.Weapon = MissileClass;
     Vehicle->AddWeapon(MissileItem);
     WeaponTimerProperty->SetPropertyValue_InContainer(Vehicle, 0.0);
@@ -131,7 +131,23 @@ bool FPhysicsVehicleSelectedWeaponTest::RunTest(const FString& Parameters)
             SpawnedMissiles[0]->GetActorLocation().Equals(
                 MissileSpawnPoint->GetComponentLocation(), 0.1));
     }
-    TestEqual(TEXT("Fired missile is consumed"), Inventory->Weapons.Num(), 0);
+    if (!TestEqual(TEXT("One missile stack remains"), Inventory->Weapons.Num(), 1))
+    {
+        World->DestroyWorld(false);
+        return false;
+    }
+    TestEqual(TEXT("Firing consumes one missile"), Inventory->Weapons[0].Quantity, 1);
+
+    Vehicle->RequestSelectedWeaponFire();
+    Vehicle->FireSelectedWeapon();
+    WeaponTimerProperty->SetPropertyValue_InContainer(Vehicle, 0.0);
+    Vehicle->FireSelectedWeapon();
+    UGameplayStatics::GetAllActorsOfClass(World, MissileClass, SpawnedMissiles);
+    TestEqual(TEXT("A request during cooldown does not fire after cooldown"), SpawnedMissiles.Num(), 1);
+    if (TestEqual(TEXT("A request during cooldown keeps the missile stack"), Inventory->Weapons.Num(), 1))
+    {
+        TestEqual(TEXT("A request during cooldown does not consume ammunition"), Inventory->Weapons[0].Quantity, 1);
+    }
 
     World->DestroyWorld(false);
     return true;

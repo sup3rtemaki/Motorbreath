@@ -25,6 +25,7 @@ public:
     virtual void Tick(float DeltaSeconds) override;
     virtual void SetupInputComponent() override;
     virtual void OnPossess(APawn* InPawn) override;
+    virtual void AcknowledgePossession(APawn* InPawn) override;
 
     UFUNCTION(BlueprintCallable, Client, Reliable, Category = "Player Controller")
     void Client_NotifyReady();
@@ -100,6 +101,7 @@ private:
     UFUNCTION()
     void HandleCurrentWeaponUpdated();
 
+    void InitializeLocalVehicle(APawn* InPawn);
     void TryConfirmPossession();
     void EnsureHUD();
     void AddCarMappingContext(bool bClearExistingMappings);

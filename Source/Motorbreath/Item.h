@@ -17,6 +17,7 @@ class MOTORBREATH_API AItem : public AActor
 public:
     AItem();
 
+    virtual void OnConstruction(const FTransform& Transform) override;
     virtual void Tick(float DeltaSeconds) override;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Item")

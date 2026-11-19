@@ -107,6 +107,7 @@ APhysicsVehicle::APhysicsVehicle()
     PhysicsMesh = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("PhysicsMesh"));
     SetRootComponent(PhysicsMesh);
     PhysicsMesh->SetCollisionProfileName(TEXT("Vehicle"));
+    PhysicsMesh->SetGenerateOverlapEvents(true);
     PhysicsMesh->BodyInstance.bSimulatePhysics = true;
     PhysicsMesh->BodyInstance.bLockTranslation = true;
     PhysicsMesh->BodyInstance.bLockRotation = true;
@@ -1276,7 +1277,13 @@ void APhysicsVehicle::FireMachinegun()
 
 void APhysicsVehicle::FireSelectedWeapon()
 {
-    if (!HasAuthority() || WeaponTimer != 0.0 || !bFireSelectedWeapon)
+    if (!HasAuthority() || !bFireSelectedWeapon)
+    {
+        return;
+    }
+
+    bFireSelectedWeapon = false;
+    if (WeaponTimer != 0.0)
     {
         return;
     }

@@ -7,13 +7,24 @@
 #include "GameFramework/ProjectileMovementComponent.h"
 #include "Kismet/KismetMathLibrary.h"
 #include "Kismet/KismetSystemLibrary.h"
+#include "Materials/MaterialInterface.h"
 #include "PhysicsVehicle.h"
+#include "UObject/ConstructorHelpers.h"
 
 AGuidedMissile::AGuidedMissile()
 {
-    ProjectileMovement = CreateDefaultSubobject<UProjectileMovementComponent>(
-        TEXT("ProjectileMovement"));
-    ProjectileMovement->SetUpdatedComponent(CollisionBox);
+    ProjectileMovement->MaxSpeed = 70000.0f;
+
+    static ConstructorHelpers::FObjectFinder<UMaterialInterface> GuidedMaterialFinder(
+        TEXT("/Engine/ArtTools/RenderToTexture/Materials/Debug/M_Emissive_Color_0-0-127.M_Emissive_Color_0-0-127"));
+    if (GuidedMaterialFinder.Succeeded())
+    {
+        StaticMesh->SetMaterial(0, GuidedMaterialFinder.Object);
+    }
+    else
+    {
+        UE_LOG(LogTemp, Error, TEXT("Could not load the guided missile material."));
+    }
 }
 
 void AGuidedMissile::Tick(float DeltaSeconds)

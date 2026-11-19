@@ -1,5 +1,6 @@
 #include "ItemSpawner.h"
 
+#include "Components/CapsuleComponent.h"
 #include "Components/SceneComponent.h"
 #include "Engine/World.h"
 #include "Item.h"
@@ -58,6 +59,9 @@ void AItemSpawner::BeginPlay()
     {
         CachedWeaponItem = WeaponItem;
         ItemType = EItemType::WeaponItem;
+        UE_LOG(LogItemSpawner, Verbose, TEXT("%s uses source item %s at %s (hidden: %s)."),
+            *GetName(), *WeaponItem->GetName(), *WeaponItem->GetActorLocation().ToString(),
+            WeaponItem->IsHidden() ? TEXT("true") : TEXT("false"));
         if (!ItemClass)
         {
             ItemClass = WeaponItem->GetClass();
@@ -153,6 +157,17 @@ AActor* AItemSpawner::SpawnWeaponItem(const FTransform& SpawnTransform)
 
     NewItem->Item = CachedWeaponItem->Item;
     NewItem->FinishSpawning(SpawnTransform);
+    if (IsValid(NewItem) && NewItem->Capsule)
+    {
+        const UCapsuleComponent* Capsule = NewItem->Capsule;
+        UE_LOG(LogItemSpawner, Verbose,
+            TEXT("%s spawned %s: capsule at %s, radius %.1f, half-height %.1f, collision %d, object %d, vehicle response %d, overlap events %s."),
+            *GetName(), *NewItem->GetName(), *Capsule->GetComponentLocation().ToString(),
+            Capsule->GetScaledCapsuleRadius(), Capsule->GetScaledCapsuleHalfHeight(),
+            static_cast<int32>(Capsule->GetCollisionEnabled()), static_cast<int32>(Capsule->GetCollisionObjectType()),
+            static_cast<int32>(Capsule->GetCollisionResponseToChannel(ECC_Vehicle)),
+            Capsule->GetGenerateOverlapEvents() ? TEXT("true") : TEXT("false"));
+    }
     return NewItem;
 }
 

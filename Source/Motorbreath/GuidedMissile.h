@@ -4,8 +4,6 @@
 #include "Missile.h"
 #include "GuidedMissile.generated.h"
 
-class UProjectileMovementComponent;
-
 UCLASS()
 class MOTORBREATH_API AGuidedMissile : public AMissile
 {
@@ -18,9 +16,6 @@ public:
 
     UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Missile")
     TObjectPtr<AActor> TargetActor = nullptr;
-
-    UPROPERTY(BlueprintReadWrite, VisibleAnywhere, Category = "Missile")
-    TObjectPtr<UProjectileMovementComponent> ProjectileMovement = nullptr;
 
     UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Missile")
     double HomingAcceleration = 70000.0;
