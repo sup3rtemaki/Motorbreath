@@ -395,7 +395,6 @@ APhysicsVehicle::APhysicsVehicle()
 
     ChaseCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("ChaseCamera"));
     ChaseCamera->SetupAttachment(SpringArm);
-    ChaseCamera->SetRelativeLocation(FVector(-2400.0, 0.0, 0.0));
     ChaseCamera->SetFieldOfView(90.0f);
     ChaseCamera->SetActive(true);
 
@@ -408,7 +407,6 @@ APhysicsVehicle::APhysicsVehicle()
 
     RearChaseCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("RearChaseCamera"));
     RearChaseCamera->SetupAttachment(RearSpringArm);
-    RearChaseCamera->SetRelativeLocation(FVector(-2400.0, 0.0, 0.0));
     RearChaseCamera->SetFieldOfView(90.0f);
     RearChaseCamera->SetAutoActivate(false);
     RearChaseCamera->SetActive(false);

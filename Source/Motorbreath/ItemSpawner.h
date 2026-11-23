@@ -55,7 +55,7 @@ public:
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spawner|Respawn",
         meta = (ClampMin = "0.0", Units = "s"))
-    double MaxTime = 0.0;
+    double MaxTime = 30.0;
 
     UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Spawner|Item")
     EItemType ItemType = EItemType::WeaponItem;
